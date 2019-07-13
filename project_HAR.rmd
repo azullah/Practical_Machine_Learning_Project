@@ -1,0 +1,116 @@
+---
+title: "Practical Machine learning - Project"
+author: "Arshad Ullah"
+date: "July 12, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Objective: 
+The goal of this project is to detect the manner in which the weight lifting exercises were performed. The data is obtained from the Human Activity recongition (HAR) project. http://groupware.les.inf.puc-rio.br/har (see section on weight lifting). The exercise types are categorized into 5 categories from A to E. The exercise category is stored in the classe variable in the training data. The category "A" is the correct execution of the exercise and all the other values are common mistakes performed while doing the exercise. 
+
+### Preparing the data
+Two comma separated datasets were obtained from the above source.
+
+Training data --> https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Testing data --> https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Each dataset had 160 variables. The training dataset had 19622 observations and the testing dataset had 20 observations. 
+
+On inspecting the data it was noticed that several of the variables contained missing values or blank data. These variables were removed from the datasets and only the sensor data variables were kept. Sensors were placed in four positions: Arm, Forearm, Belt and Dumbbell. Each position had magnetic, accelerometer and gyroscope sensors with readings for dimensions x, y and z for each sensor. 
+The total number of variables (including the classe variable) was reduced to 53 for the training data and 52 for the testing data. These will be the predictors for the model. 
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(dplyr)
+
+setwd("~\\DataScience\\Machine Learning")
+
+training <- read.csv(".\\pml-training.csv")
+
+testing <- read.csv(".\\pml-testing.csv")
+
+
+
+trainSel <- select(training, starts_with("magnet"), starts_with("accel"), 
+                   starts_with("gyros"),
+                   starts_with("yaw_"), starts_with("pitch_"), starts_with("roll_"),
+                   starts_with("total_accel"), 
+                   classe)
+
+
+testSel <- select(testing, starts_with("magnet"), starts_with("accel"), starts_with("gyros"),
+                  starts_with("yaw_"), starts_with("pitch_"), starts_with("roll_"),
+                  starts_with("total_accel"))
+
+```
+
+Next the test data was divided into 2 partitions, based on the classe variable. 75% was kept for training only and 25% was kept for validation only. This is so that the trained model can be validated against the output variable and accuracy determined before applying it to the test data. 
+
+```{r, echo=TRUE , warning=FALSE, message=FALSE}
+
+library(caret)
+
+inTrain <- createDataPartition(y=trainSel$classe,p=0.75, list=FALSE)
+
+trainOnly <- trainSel[inTrain,]
+
+ValidateOnly <- trainSel[-inTrain,]
+
+```
+
+### Estimating model accuracy (Cross-validation) 
+
+In order to estimate the model accuracy the k-fold cross-validation approach was used. The number of folds was set to 10. This is important because the model chosen was a Random Forest model. 
+```{r, echo=TRUE}
+train_control <- trainControl(method="cv", number=10)
+
+```
+
+### Model Selection 
+Iniitially the tree approach was used with all the variables other than classe as the predictors. The output model performed very poorly and had an accuracy of approx 50% which was unacceptable. Next the random forest approach was applied with the number of trees set to 100. This provided very good results and the accuracy of the model against the validation data produced a 99.2% accuracy. The train function in the caret package was used to generate the model. 
+
+```{r, echo=TRUE}
+
+mod.rf <- train(classe ~., method = "rf", trControl=train_control, data = trainOnly, prox=FALSE, ntree=100)
+
+print(mod.rf)
+
+```
+
+### Validation of the model 
+
+Next we will use the model created to predict the output variable in the validation dataset and compare it against the actual output variable in the dataset. 
+
+```{r, echo=TRUE}
+pred.val.rf <- predict(mod.rf, newdata = ValidateOnly)
+
+confusionMatrix(pred.val.rf, ValidateOnly$classe)
+
+```
+
+### Plots
+Shown below are plots of the model accuracy against the number of predictors. As seen the accuracy of the model remains high upto about 27 predictors but beyond that the accuracy goes down linearly. 
+
+
+```{r , echo=FALSE}
+plot(mod.rf)
+```
+
+Next we will plot the error rate (the black line is the out of sample (or out of bag) error rate) against the number of trees. The out of sample error reduces exponentially as the number of trees increase.
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE}
+library(randomForest)
+mod.rf2 <- randomForest(classe ~., data = trainOnly, prox = FALSE, ntree=100)
+plot(mod.rf2, main = "Random Forest")
+```
+
+### Variable importance 
+Below are listed the predictors in the order of descending importance. First 20 are shown. 
+
+```{r , echo=TRUE}
+varImp(mod.rf)
+```
